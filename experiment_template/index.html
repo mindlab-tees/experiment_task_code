@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+
+<!--
+Experiment Template for JATOS + jsPsych
+The Wilson-Medimorec MIND Lab 2026
+Christopher Wilson
+Comments by AI, for clarity
+===============================
+ -->
+
+<html>
+  <head>
+    <title>Experiment Template</title>
+
+    <!-- JSPSYCH CORE -->
+    <script src="jspsych/jspsych.js"></script>
+
+    <!-- JQUERY-->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+
+    <!-- JATOS -->
+    <script src="jatos.js"></script>
+
+    <!-- JSPSYCH and custom CSS -->
+    <link href="jspsych/css/jspsych.css" rel="stylesheet" type="text/css" />
+    <link href="cw.css" rel="stylesheet" type="text/css" /> 
+
+    <!-- JSPSYCH PLUGINS: Not all plugins may be needed; include as required -->
+    <script src="jspsych/plugin-html-keyboard-response.js"></script>
+    <script src="jspsych/plugin-html-button-response.js"></script>
+    <script src="jspsych/plugin-instructions.js"></script>
+    <script src="jspsych/plugin-external-html.js"></script>
+    <script src="jspsych/plugin-fullscreen.js"></script>
+    <script src="jspsych/plugin-survey.js"></script>
+    <script src="jspsych/plugin-preload.js"></script>
+    
+    <!-- CORE EXP MODULES -->
+    <script src="core_modules/session_manager.js"></script>
+    <script src="core_modules/standard_trials.js"></script>
+    <script src="core_modules/demographics.js"></script>
+
+    </head>
+  <body></body>
+  <script>
+    
+    // --- INIT JSPSYCH ---
+    const jsPsych = initJsPsych({
+        on_trial_start: jatos.addAbortButton,
+        on_finish: () => jatos.endStudy(jsPsych.data.get().json()),
+        on_data_update: function(data) {
+            jatos.appendResultData(data);
+        }
+    });
+
+    // --- SETUP SESSION (Synchronous) ---
+    // Generates random ID immediately so it's available for timeline variables
+    var participantID = setupRandomId(jsPsych); 
+
+    // --- BUILD TIMELINE ---
+    var timeline = [];
+
+    //  Standard Setup
+    timeline.push(getTouchscreenWarning());
+    timeline.push(getFullscreenWarning());
+    timeline.push(getPISBlock("info_sheet.html")); // Ensure file exists
+    timeline.push(getConsentBlock("consent.html")); // Ensure file exists
+    timeline.push(getDemographicsTrial()); 
+
+    // Attention Check (Optional)
+    timeline.push(getAttentionCheckChain()); 
+
+    // Experimental Tasks
+    // ---------------------------------------------------------
+    // INSERT YOUR TASKS HERE
+    
+    // Example: 
+    // timeline.push(createGamblingTask(jsPsych, 18));
+    // timeline.push(createBCSTTask(jsPsych));
+    
+    // ---------------------------------------------------------
+
+    // End of Study
+    timeline.push(getDebriefBlock("debrief.html")); // Ensure file exists
+
+
+    // --- RUN VIA JATOS ---
+    jatos.onLoad(() => {
+        // Capture SONA ID if available (needs JATOS ready)
+        setupJatosIds(jsPsych);
+
+        // Start!
+        jsPsych.run(timeline);
+    });
+
+  </script>
+</html>
