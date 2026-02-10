@@ -5,67 +5,110 @@
 function createSetupTimeline(jsPsych) {
 
     // 1. Connection Screen
-    var setup_connect = {
+// 1. Connection Screen
+    // Global variable to track connection status across trials
+    var is_device_connected = false;
+
+    // 1. The Connection Trial
+    var setup_connect_trial = {
         type: jsPsychHtmlButtonResponse,
-        stimulus: `
-            <h2>fNIRS Setup: Step 1</h2>
-            <p>Please connect the USB serial cable to this computer.</p>
-            <p>Click the button below, select the <strong>USB Serial Device</strong> from the list, and click 'Connect'.</p>
-            <div style="margin: 20px; padding: 20px; background: #eee; border: 1px solid #ccc;">
-                <span id="connection-status" style="color: red; font-weight: bold;">Status: Disconnected</span>
-            </div>
-        `,
-        choices: ['Connect'],
+        stimulus: function() {
+            // Dynamic stimulus: Shows an error message if they failed previously
+            let msg = `
+                <h2>fNIRS Setup: Step 1</h2>
+                <p>Please connect the USB serial cable.</p>
+                <div style="margin: 20px; padding: 20px; background: #eee; border: 1px solid #ccc;">
+                    <span id="connection-status" style="color: red; font-weight: bold;">Status: Disconnected</span>
+                </div>
+            `;
+            // Add a red warning if this is a retry
+            if (jsPsych.data.get().last(1).values()[0]?.connection_attempted) {
+                 msg += `<p style="color:red; font-weight:bold;">Connection failed or cancelled. Please try again.</p>`;
+            }
+            return msg;
+        },
+        choices: ['Connect to USB Serial'],
+        response_ends_trial: false, // We handle the finish manually
         on_load: function() {
-            // Attach listener to the jsPsych button
+            // Attach listener
             document.querySelector('.jspsych-btn').addEventListener('click', async (e) => {
-                e.preventDefault(); // Prevent immediate advance
+                let btn = e.target;
                 
-                // Attempt connection using webSerial.js
+                // Visual feedback: Disable button while processing
+                btn.innerHTML = "Connecting...";
+                btn.disabled = true;
+
+                // Attempt Connection
                 if (typeof connectSerialPort === "function") {
                     let success = await connectSerialPort();
+                    
                     if (success) {
+                        is_device_connected = true;
                         document.getElementById('connection-status').innerHTML = '<span style="color: green;">CONNECTED!</span>';
-                        // Wait 1 second then advance automatically
-                        setTimeout(() => jsPsych.finishTrial(), 1000);
+                        btn.innerHTML = "Success!";
+                        
+                        // Wait 1 second then finish
+                        setTimeout(() => jsPsych.finishTrial({connection_attempted: true}), 1000);
+                    } else {
+                        // Failed: Finish trial immediately so the loop can reload it
+                        is_device_connected = false;
+                        jsPsych.finishTrial({connection_attempted: true}); 
                     }
                 } else {
                     alert("Error: webSerial.js not loaded.");
+                    jsPsych.finishTrial({connection_attempted: true});
                 }
             });
         }
     };
 
-    // 2. Signal Test (Spacebar Loop)
-    var setup_test_signal = {
-        type: jsPsychHtmlKeyboardResponse,
-        stimulus: `
-            <h2>fNIRS Setup: Step 2</h2>
-            <p>Check the fNIRS software (COBI). You should see a marker appear when you press Space.</p>
-            <div style="font-size: 24px; font-weight: bold; margin: 30px; padding: 20px; border: 2px dashed black;">
-                Press [SPACE] to send marker "o" <br/>
-                Press [C] to confirm and continue
-            </div>
-        `,
-        choices: [' ', 'c', 'C'],
-        on_finish: function(data) {
-            // If space was pressed, send marker
-            if (jsPsych.pluginAPI.compareKeys(data.response, ' ')) {
-                if (typeof sendSerialMarker === "function") sendSerialMarker('o');
+    // 2. The Loop Node
+    // This keeps repeating the trial above until 'is_device_connected' is true
+    var setup_connect_loop = {
+        timeline: [setup_connect_trial],
+        loop_function: function() {
+            if (is_device_connected) {
+                return false; // Stop looping, move to next step
+            } else {
+                return true; // Connection failed, run trial again (reloads button)
             }
         }
     };
 
-    // Loop function
-    var setup_test_loop = {
-        timeline: [setup_test_signal],
-        loop_function: function(data) {
-            // Keep looping if they pressed Space
-            if (jsPsych.pluginAPI.compareKeys(data.values()[0].response, ' ')) {
-                return true; 
-            } else {
-                return false; // Stop if they pressed C
-            }
+    // 3. Signal Test (Persistent Listener from previous step)
+    var spaceListener;
+    var setup_test_signal = {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+            <h2>fNIRS Setup: Step 2</h2>
+            <p>Check the fNIRS software (COBI).</p> 
+            <p>You should see a marker appear <strong>every time</strong> you press Space.</p>
+            <div style="font-size: 24px; font-weight: bold; margin: 30px; padding: 20px; border: 2px dashed black;">
+                Press [SPACE] to send marker "o" <br/>
+                <span id="marker-feedback" style="color:gray; font-size:18px;">(Ready)</span>
+            </div>
+            <br/>
+            <p>Press <strong>[C]</strong> to confirm and continue.</p>
+        `,
+        choices: ['c', 'C'], 
+        on_load: function() {
+            spaceListener = function(e) {
+                if (e.key === " " || e.code === "Space") {
+                    e.preventDefault();
+                    if (typeof sendSerialMarker === "function") sendSerialMarker('o');
+                    
+                    let fb = document.getElementById('marker-feedback');
+                    if(fb) {
+                        fb.style.color = "green";
+                        fb.innerText = "Marker Sent!";
+                        setTimeout(() => { if(fb) { fb.style.color = "gray"; fb.innerText = "(Ready)"; }}, 200);
+                    }
+                }
+            };
+            document.addEventListener('keydown', spaceListener);
+        },
+        on_finish: function() {
+            document.removeEventListener('keydown', spaceListener);
         }
     };
 
@@ -109,8 +152,8 @@ function createSetupTimeline(jsPsych) {
     // Return the timeline object
     return {
         timeline: [
-            setup_connect, 
-            setup_test_loop, 
+            setup_connect_loop, 
+            setup_test_signal, 
             setup_instructions, 
             setup_baseline_instruction, 
             setup_baseline_recording
