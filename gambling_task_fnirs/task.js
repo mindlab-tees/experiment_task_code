@@ -1,8 +1,9 @@
+/* task.js */
 function createGamblingTask(jsPsych) {
 
-    const trials_per_block = CGT_CONFIG.trials_per_block;
-    const timing_config = CGT_CONFIG.timings;
-    const start_points = CGT_CONFIG.starting_points;
+    const trials_per_block = GT_CONFIG.trials_per_block;
+    const timing_config = GT_CONFIG.timings;
+    const start_points = GT_CONFIG.starting_points;
 
     var trial_ratios = [1, 2, 3, 4, 5, 6, 7, 8, 9];
     var trial_ratios_all = [];
@@ -24,7 +25,6 @@ function createGamblingTask(jsPsych) {
         return Math.floor(Math.random() * (max - min) + min);
     }
 
-    // Simplified: Just returns points. The Plugin handles the reset logic now.
     const get_start_points = () => {
         return currentPoints;
     };
@@ -38,7 +38,6 @@ function createGamblingTask(jsPsych) {
             on_start: function() {
                 if (typeof sendSerialMarker === "function") {
                     sendSerialMarker(marker_char);
-                    console.log("Block Marker Sent: " + marker_char);
                 }
             }
         };
@@ -46,17 +45,15 @@ function createGamblingTask(jsPsych) {
 
     // --- Blocks ---
 
-    // PRACTICE (No markers, random ratios)
     const gambling_block_practice = {
         type: jsPsychGamblingTask,
         timings: timing_config, 
         send_markers: false,
         timeline: [{
             starting_points: get_start_points,
-            cumulative_bankruptcies: () => bankrupt, // Pass global counter
+            cumulative_bankruptcies: () => bankrupt,
             n_redboxes: () => getRandomInt(1, 9),
             on_finish: function(data) {
-                // If the plugin triggered a reset, update global counter
                 if (data.bankruptcy_triggered) { bankrupt++; }
                 currentPoints = data.end_total;
                 ntrials++; 
@@ -66,13 +63,12 @@ function createGamblingTask(jsPsych) {
         data: { phase: 'gambling_practice' }
     };
 
-    // ASCENDING
     const gambling_block_asc = {
         type: jsPsychGamblingTask,
         timings: timing_config,
         timeline: [{
             starting_points: get_start_points,
-            cumulative_bankruptcies: () => bankrupt, // Pass global counter
+            cumulative_bankruptcies: () => bankrupt,
             n_redboxes: function() {
                 return asc_ratios.length > 0 ? asc_ratios.pop() : getRandomInt(1, 9);
             },
@@ -85,13 +81,12 @@ function createGamblingTask(jsPsych) {
         data: { phase: 'gambling_ascending' }
     };
 
-    // DESCENDING
     const gambling_block_desc = {
         type: jsPsychGamblingTask,
         timings: timing_config,
         timeline: [{
             starting_points: get_start_points,
-            cumulative_bankruptcies: () => bankrupt, // Pass global counter
+            cumulative_bankruptcies: () => bankrupt,
             n_redboxes: function() {
                 return desc_ratios.length > 0 ? desc_ratios.pop() : getRandomInt(1, 9);
             },
@@ -105,13 +100,12 @@ function createGamblingTask(jsPsych) {
         data: { phase: 'gambling_descending' }
     };
 
-    // RANDOM
     const gambling_block_random = {
         type: jsPsychGamblingTask,
         timings: timing_config,
         timeline: [{
             starting_points: get_start_points,
-            cumulative_bankruptcies: () => bankrupt, // Pass global counter
+            cumulative_bankruptcies: () => bankrupt,
             n_redboxes: function() {
                 return random_ratios.length > 0 ? random_ratios.pop() : getRandomInt(1, 9);
             },
@@ -128,7 +122,8 @@ function createGamblingTask(jsPsych) {
         data: { phase: 'gambling_random' }
     };
 
-    // --- Sequence ---
+    // --- Instructions ---
+
     var gambling_instructions1 = {
         type: jsPsychInstructions,
         pages: [
@@ -174,36 +169,92 @@ function createGamblingTask(jsPsych) {
         on_finish: function() { ntrials = 0; }
     };
 
-// --- Timeline Assembly ---
-    // We check CGT_CONFIG.send_markers to see if we should include the "+" marker trials
+    // --- Scoring Trial (Rogers et al., 1999) ---
+var cgt_scoring_trial = {
+        type: jsPsychCallFunction,
+        data: { phase: 'cgt_scoring' },
+        func: function() {
+            const expData = jsPsych.data.get().filterCustom(d => 
+                d.phase && d.phase.includes('gambling_') && d.phase !== 'gambling_practice'
+            );
+
+            if (expData.count() === 0) return;
+
+            // Updated decision logic using 'colour_chosen' key
+            const isMajorityChoice = (d) => {
+                if (d.n_redboxes > 5) return d.colour_chosen === 'red';
+                if (d.n_redboxes < 5) return d.colour_chosen === 'blue';
+                return null;
+            };
+
+            const qualityTrials = expData.filterCustom(d => isMajorityChoice(d) !== null);
+            const majorityTrials = expData.filterCustom(d => isMajorityChoice(d) === true);
+
+            // 1. Quality of Decisions
+            const qualityOfDecisions = qualityTrials.count() > 0 ? (majorityTrials.count() / qualityTrials.count()) : 0;
+
+            // 2. Risk Taking (Mean % bet on majority choices)
+           // const riskTaking = majorityTrials.count() > 0 ? (majorityTrials.values().reduce((acc, d) => acc + (d.bet_amount / d.starting_points), 0) / majorityTrials.count()) : null;
+
+           const riskTaking = majorityTrials.count() > 0 ? (majorityTrials.values().reduce((acc, d) => acc + d.bet_proportion, 0) / majorityTrials.count()) : null;
+            // 3. Risk Adjustment (Bet sensitivity to odds)
+            const getMeanBetAtRatio = (r) => {
+                const rTrials = majorityTrials.filterCustom(d => d.n_redboxes === r || d.n_redboxes === (10 - r));
+              //  return rTrials.count() > 0 ? (rTrials.values().reduce((acc, d) => acc + (d.bet_amount / d.starting_points), 0) / rTrials.count()) : 0;
+            
+            return rTrials.count() > 0 ? (rTrials.values().reduce((acc, d) => acc + d.bet_proportion, 0) / rTrials.count()) : 0;
+            };
+            const riskAdjustment = (2 * getMeanBetAtRatio(9)) + getMeanBetAtRatio(8) - getMeanBetAtRatio(7) - (2 * getMeanBetAtRatio(6));
+
+            // 4. Delay Aversion (Descending - Ascending mean % bets)
+            const getCondMean = (p) => {
+                const pTrials = expData.filter({phase: p});
+               // return pTrials.count() > 0 ? (pTrials.values().reduce((acc, d) => acc + (d.bet_amount / d.starting_points), 0) / pTrials.count()) : 0;
+            return pTrials.count() > 0 ? (pTrials.values().reduce((acc, d) => acc + d.bet_proportion, 0) / pTrials.count()) : 0;
+            };
+            const delayAversion = getCondMean('gambling_descending') - getCondMean('gambling_ascending');
+
+            // 5. Deliberation Time (Using 'colour_rt' key)
+            const deliberationTime = expData.select('colour_rt').mean();
+
+            jsPsych.data.addProperties({
+                gt_quality_of_decisions: qualityOfDecisions,
+                gt_risk_taking: riskTaking,
+                gt_risk_adjustment: riskAdjustment,
+                gt_delay_aversion: delayAversion,
+                gt_deliberation_time: deliberationTime
+            });
+        }
+    };
+    // --- Timeline Assembly ---
     
-    // Ascending Block
     var asc_sequence = [instruction_asc];
-    if (CGT_CONFIG.send_markers) { asc_sequence.push(create_marker_trial("a")); }
+    if (GT_CONFIG.send_markers) { asc_sequence.push(create_marker_trial("a")); }
     asc_sequence.push(gambling_block_asc);
 
-    // Descending Block
     var desc_sequence = [instruction_desc];
-    if (CGT_CONFIG.send_markers) { desc_sequence.push(create_marker_trial("d")); }
+    if (GT_CONFIG.send_markers) { desc_sequence.push(create_marker_trial("d")); }
     desc_sequence.push(gambling_block_desc);
 
-    // Random Block
     var rand_sequence = [instruction_random];
-    if (CGT_CONFIG.send_markers) { rand_sequence.push(create_marker_trial("r")); }
+    if (GT_CONFIG.send_markers) { rand_sequence.push(create_marker_trial("r")); }
     rand_sequence.push(gambling_block_random);
 
-    // Timeline Definitions
-    var timeline_asc = { timeline: asc_sequence };
-    var timeline_desc = { timeline: desc_sequence };
-    var timeline_rand = { timeline: rand_sequence };
-
     var gambling_block_sequence = {
-        timeline: jsPsych.randomization.shuffle([timeline_asc, timeline_desc, timeline_rand])
+        timeline: jsPsych.randomization.shuffle([
+            { timeline: asc_sequence }, 
+            { timeline: desc_sequence }, 
+            { timeline: rand_sequence }
+        ])
     };
 
-    var full_gambling_timeline = {
-        timeline: [gambling_instructions1, gambling_block_practice, gambling_instructions2, gambling_block_sequence]
+    return {
+        timeline: [
+            gambling_instructions1, 
+            gambling_block_practice, 
+            gambling_instructions2, 
+            gambling_block_sequence,
+            cgt_scoring_trial
+        ]
     };
-
-    return full_gambling_timeline;
 }

@@ -30,7 +30,7 @@ var jsPsychGamblingTask = (function (jspsych) {
         default: true 
       },
       bet_values: {
-        type: jspsych.ParameterType.INT,
+        type: jspsych.ParameterType.FLOAT,
         array: true,
         default: [0.05, 0.25, 0.5, 0.75, 0.95]
       },
@@ -165,7 +165,7 @@ var jsPsychGamblingTask = (function (jspsych) {
 
       // PHASE 3: Reveal Result
       const showResults = () => {
-        clearInterval(betInterval);
+        
         sendMarker("w"); 
 
         const isCorrect = (chosenColor === "red" && tokenPosition < numberOfRedBoxes) ||
@@ -235,6 +235,7 @@ var jsPsychGamblingTask = (function (jspsych) {
       };
 
       const after_bet_response = (info) => {
+         clearInterval(betInterval);
         sendMarker("v"); 
 
         response.bet_rt = info.rt;

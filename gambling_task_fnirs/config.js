@@ -3,10 +3,10 @@
 // --- MASTER SWITCH ---
 // Set to TRUE for fNIRS (Long delays + Markers)
 // Set to FALSE for Behavioral (Fast delays + No Markers)
-const ENABLE_FNIRS = false; 
+//const ENABLE_FNIRS = false; 
 
-
-const CGT_CONFIG = {
+const ENABLE_FNIRS = false;
+const GT_CONFIG = {
     // Hardware Settings
     com_port: "3", 
 
